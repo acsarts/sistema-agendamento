@@ -31,7 +31,7 @@ Pedro Santos
 08:00 às 10:00
 Gravação"""
 
-lista_input = st.text_area("Cole a lista aqui (Padrão: Nome, depois Horário, depois Tipo):", value=texto_padrao, height=300)
+lista_input = st.text_area("Cole a lista aqui (Padrão: Nome, Horário, Tipo):", value=texto_padrao, height=300)
 
 # Botão de Ação
 botao_gerar = st.button("🚀 Gerar Grade Balanceada")
@@ -47,7 +47,6 @@ regras_estudios = {
     '7 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '8 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '9 PKS': {'abertura': '07:30', 'fechamento': '22:30', 'intervalos': [('12:00', '13:30'), ('17:00', '18:30')], 'proibido': []},
-    '12 SE//DE': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []}
 }
 
 # ==========================================
