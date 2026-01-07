@@ -5,8 +5,8 @@ import re
 # Configuração da página
 st.set_page_config(page_title="Sistema de Agendamento Balanceado", layout="wide")
 
-st.title("⚖️ Sistema de Agendamento (Balanceamento de Carga)")
-st.markdown("Este sistema distribui as aulas para garantir que todos os estúdios/operadores trabalhem a mesma quantidade de horas, sempre que possível.")
+st.title("⚖️ Sistema de Agendamento (Balanceamento + Regras Específicas)")
+st.markdown("Este sistema distribui a carga horária igualmente, respeitando regras como: **Graduação T.I (OFF) apenas no Estúdio 7**.")
 
 # ==========================================
 # 1. INPUT DE DADOS NA TELA
@@ -15,23 +15,19 @@ texto_padrao = """Rafael Barbosa
 07:30 às 09:30
 Aula ao vivo
 
+Maria TI
+10:00 às 12:00
+Graduação T.I (OFF)
+
 Claiton Natal
 14:00 às 16:00
 Aula ao vivo
 
 Mário Elesbão Lima Da Silva
 18:30 às 21:00
-Aula ao vivo
+Aula ao vivo"""
 
-Ana Silva
-08:00 às 10:00
-Gravação
-
-Pedro Santos
-08:00 às 10:00
-Gravação"""
-
-lista_input = st.text_area("Cole a lista aqui (Padrão: Nome, Horário, Tipo):", value=texto_padrao, height=300)
+lista_input = st.text_area("Cole a lista aqui (Padrão: Nome, depois Horário, depois Tipo):", value=texto_padrao, height=300)
 
 # Botão de Ação
 botao_gerar = st.button("🚀 Gerar Grade Balanceada")
@@ -47,6 +43,7 @@ regras_estudios = {
     '7 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '8 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '9 PKS': {'abertura': '07:30', 'fechamento': '22:30', 'intervalos': [('12:00', '13:30'), ('17:00', '18:30')], 'proibido': []},
+    '12 SE//DE': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []}
 }
 
 # ==========================================
@@ -66,7 +63,14 @@ def verifica_colisao(inicio1, fim1, inicio2, fim2):
 def buscar_sugestoes(aula, regras, ocupacoes):
     duracao = aula['fim'] - aula['inicio']
     sugestoes = []
+    
+    # Se for TI OFF, filtra apenas o estúdio 7 para sugestão
+    eh_ti_off = "Graduação T.I (OFF)" in aula['tipo']
+
     for nome, regra in regras.items():
+        # Regra de Exclusividade na Sugestão
+        if eh_ti_off and nome != '7 PKS': continue
+
         if any(p.lower() in aula['tipo'].lower() for p in regra['proibido']): continue
         abertura = converte_minutos(regra['abertura'])
         fechamento = converte_minutos(regra['fechamento'])
@@ -85,10 +89,9 @@ def buscar_sugestoes(aula, regras, ocupacoes):
     return sugestoes
 
 # ==========================================
-# 4. LÓGICA DE BALANCEAMENTO
+# 4. LÓGICA PRINCIPAL
 # ==========================================
 if botao_gerar:
-    # 1. Leitura dos dados
     linhas = [l.strip() for l in lista_input.split('\n') if l.strip()]
     aulas = []
     
@@ -116,15 +119,12 @@ if botao_gerar:
                 'duracao': converte_minutos(fim_str) - converte_minutos(inicio_str)
             })
 
-    # Ordena por horário (para garantir cronologia), mas também poderia ordenar por duração (do maior pro menor) para encaixar os grandes primeiro
-    # Vamos manter por horário de início para respeitar a fila do dia
+    # Ordena cronologicamente
     aulas.sort(key=lambda x: x['inicio'])
     
     agenda_final = []
     nao_agendados = []
     ocupacao_estudios = {k: [] for k in regras_estudios.keys()}
-    
-    # NOVO: Rastreador de Carga Horária (em minutos) para Balanceamento
     carga_estudios = {k: 0 for k in regras_estudios.keys()}
 
     for aula in aulas:
@@ -133,37 +133,36 @@ if botao_gerar:
             nao_agendados.append(aula)
             continue
 
-        # --- A MÁGICA DO BALANCEAMENTO ACONTECE AQUI ---
-        # 1. Encontra TODOS os estúdios possíveis para esta aula
         candidatos_validos = []
+        
+        # Verifica se é a aula especial
+        eh_ti_off = "Graduação T.I (OFF)" in aula['tipo']
 
         for nome_estudio, regras in regras_estudios.items():
+            
+            # --- REGRA DE OURO: T.I (OFF) SÓ NO 7 PKS ---
+            if eh_ti_off and nome_estudio != '7 PKS':
+                continue
+            # --------------------------------------------
+
             abertura = converte_minutos(regras['abertura'])
             fechamento = converte_minutos(regras['fechamento'])
             
-            # Checagens Básicas
             if aula['inicio'] < abertura or aula['fim'] > fechamento: continue
             if any(p.lower() in aula['tipo'].lower() for p in regras['proibido']): continue
             
-            # Checagem de Intervalos do Estúdio
             if any(verifica_colisao(aula['inicio'], aula['fim'], converte_minutos(i[0]), converte_minutos(i[1])) for i in regras['intervalos']): continue
-            
-            # Checagem de Conflito com Agenda Existente
             if any(verifica_colisao(aula['inicio'], aula['fim'], oc['inicio'], oc['fim']) for oc in ocupacao_estudios[nome_estudio]): continue
             
-            # Se passou por tudo, é um candidato
             candidatos_validos.append(nome_estudio)
 
-        # 2. Escolhe o candidato que tem MENOS carga horária acumulada
         if candidatos_validos:
-            # Ordena os candidatos baseados em quem trabalhou menos até agora
+            # Ordena pelo estúdio mais vazio (Balanceamento)
             candidatos_validos.sort(key=lambda x: carga_estudios[x])
+            melhor_estudio = candidatos_validos[0]
             
-            melhor_estudio = candidatos_validos[0] # O primeiro é o mais vazio
-            
-            # Agenda
             ocupacao_estudios[melhor_estudio].append(aula)
-            carga_estudios[melhor_estudio] += aula['duracao'] # Soma a carga
+            carga_estudios[melhor_estudio] += aula['duracao']
             
             agenda_final.append({
                 'Sala': melhor_estudio, 
@@ -175,15 +174,12 @@ if botao_gerar:
         
         if not agendado: nao_agendados.append(aula)
 
-    # Mostra Resultados
     if agenda_final:
         st.success("✅ Grade Gerada e Balanceada!")
         
-        # Exibe a tabela principal
         df = pd.DataFrame(agenda_final).sort_values(by=['Sala', 'Horário'])
         st.dataframe(df, use_container_width=True)
         
-        # --- RELATÓRIO DE EQUILÍBRIO ---
         st.markdown("### 📊 Relatório de Carga Horária (Equilíbrio)")
         dados_carga = []
         for sala, minutos in carga_estudios.items():
@@ -207,4 +203,4 @@ if botao_gerar:
                     st.write("💡 **Sugestões:**")
                     for s in sugs: st.code(s, language="text")
                 else:
-                    st.write("⚠️ Sem vagas alternativas.")
+                    st.write("⚠️ Sem vagas alternativas (ou restrição de sala impede).")
