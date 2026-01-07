@@ -6,18 +6,21 @@ import re
 st.set_page_config(page_title="Sistema de Agendamento", layout="wide")
 
 st.title("📅 Sistema de Agendamento Inteligente")
-st.markdown("Cole sua lista abaixo. O sistema entende nomes e horários, mesmo que o tipo de aula esteja na linha de baixo.")
+st.markdown("Cole sua lista abaixo seguindo o padrão vertical: **Nome** (linha 1), **Horário** (linha 2), **Tipo** (linha 3).")
 
 # ==========================================
-# 1. INPUT DE DADOS NA TELA
+# 1. INPUT DE DADOS NA TELA (Exemplo atualizado)
 # ==========================================
-texto_padrao = """Rafael Barbosa 07:30 às 09:30
+texto_padrao = """Rafael Barbosa
+07:30 às 09:30
 Aula ao vivo
 
-Claiton Natal 14:00 às 16:00
+Claiton Natal
+14:00 às 16:00
 Aula ao vivo
 
-Mário Elesbão Lima Da Silva 18:30 às 21:00
+Mário Elesbão Lima Da Silva
+18:30 às 21:00
 Aula ao vivo"""
 
 lista_input = st.text_area("Cole a lista aqui:", value=texto_padrao, height=300)
@@ -26,7 +29,7 @@ lista_input = st.text_area("Cole a lista aqui:", value=texto_padrao, height=300)
 botao_gerar = st.button("🚀 Gerar Grade")
 
 # ==========================================
-# 2. CONFIGURAÇÃO (Estúdio 11 REMOVIDO)
+# 2. CONFIGURAÇÃO (Sem o estúdio 11)
 # ==========================================
 regras_estudios = {
     '2 PKS': {'abertura': '07:30', 'fechamento': '22:30', 'intervalos': [], 'proibido': ['Pós-Graduação', 'Graduação']},
@@ -36,6 +39,7 @@ regras_estudios = {
     '7 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '8 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '9 PKS': {'abertura': '07:30', 'fechamento': '22:30', 'intervalos': [('12:00', '13:30'), ('17:00', '18:30')], 'proibido': []},
+    '12 SE//DE': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []}
 }
 
 # ==========================================
@@ -43,7 +47,6 @@ regras_estudios = {
 # ==========================================
 def converte_minutos(horario_str):
     try:
-        # Remove caracteres invisíveis e pega só hh:mm
         limpo = re.sub(r'[^\d:]', '', horario_str)
         h, m = map(int, limpo.split(':'))
         return h * 60 + m
@@ -75,63 +78,49 @@ def buscar_sugestoes(aula, regras, ocupacoes):
     return sugestoes
 
 # ==========================================
-# 4. LÓGICA DE LEITURA E PROCESSAMENTO
+# 4. LÓGICA DE LEITURA (NOVA INTELEGÊNCIA VERTICAL)
 # ==========================================
 if botao_gerar:
-    # Quebra o texto em linhas e remove linhas vazias
-    linhas_brutas = [l.strip() for l in lista_input.split('\n') if l.strip()]
+    # Limpa as linhas vazias e espaços extras
+    linhas = [l.strip() for l in lista_input.split('\n') if l.strip()]
     aulas = []
     
-    i = 0
-    while i < len(linhas_brutas):
-        linha = linhas_brutas[i]
-        
-        # Procura pelo padrão de horário "00:00 às 00:00"
+    # Percorre todas as linhas procurando por horários
+    for i, linha in enumerate(linhas):
+        # A âncora é a linha que tem "às" e números (formato de horário)
         if 'às' in linha and re.search(r'\d{1,2}:\d{2}', linha):
-            # Divide a linha no "às"
-            partes_horario = linha.split('às')
             
-            # O lado ESQUERDO tem "Nome 00:00"
-            lado_esquerdo = partes_horario[0].strip()
-            # Encontra onde termina o nome e começa a hora (último espaço)
-            ultimo_espaco = lado_esquerdo.rfind(' ')
+            # 1. Pega o NOME (Linha anterior)
+            nome = "Desconhecido"
+            if i > 0:
+                nome = linhas[i-1] # Pega a linha de cima
             
-            if ultimo_espaco != -1:
-                nome = lado_esquerdo[:ultimo_espaco].replace(',', '').strip() # Tira vírgula se tiver
-                inicio_str = lado_esquerdo[ultimo_espaco+1:].strip()
-            else:
-                # Caso de erro na formatação
-                nome = "Desconhecido"
-                inicio_str = lado_esquerdo
-            
-            # O lado DIREITO tem "00:00" e talvez lixo
-            lado_direito = partes_horario[1].strip()
-            # Pega só a primeira "palavra" que deve ser o horário
-            fim_str = lado_direito.split(' ')[0]
-
-            # Tenta pegar o TIPO na próxima linha
-            tipo = "Geral"
-            if i + 1 < len(linhas_brutas):
-                proxima_linha = linhas_brutas[i+1]
-                # Se a próxima linha NÃO tem "às", é porque é o tipo da aula
-                if 'às' not in proxima_linha:
-                    tipo = proxima_linha
-                    i += 1 # Pula essa linha pois já lemos
-            
-            # Salva a aula
+            # 2. Pega o HORÁRIO (Linha atual)
             try:
-                aulas.append({
-                    'prof': nome,
-                    'inicio': converte_minutos(inicio_str),
-                    'fim': converte_minutos(fim_str),
-                    'tipo': tipo,
-                    'orig_inicio': inicio_str,
-                    'orig_fim': fim_str
-                })
+                partes_h = linha.split('às')
+                inicio_str = partes_h[0].strip()
+                fim_str = partes_h[1].strip().split(' ')[0] # Garante pegar só a hora
             except:
-                st.error(f"Erro ao ler linha: {linha}")
+                st.error(f"Erro na formatação do horário: {linha}")
+                continue
 
-        i += 1
+            # 3. Pega o TIPO (Linha posterior)
+            tipo = "Geral"
+            if i + 1 < len(linhas):
+                proxima = linhas[i+1]
+                # Verifica se a próxima linha não é outro horário (caso tenha esquecido o tipo)
+                if 'às' not in proxima:
+                    tipo = proxima
+
+            # Salva
+            aulas.append({
+                'prof': nome,
+                'inicio': converte_minutos(inicio_str),
+                'fim': converte_minutos(fim_str),
+                'tipo': tipo,
+                'orig_inicio': inicio_str,
+                'orig_fim': fim_str
+            })
 
     # Ordena e Agenda
     aulas.sort(key=lambda x: x['inicio'])
@@ -168,7 +157,7 @@ if botao_gerar:
         df = pd.DataFrame(agenda_final).sort_values(by=['Sala', 'Horário'])
         st.dataframe(df, use_container_width=True)
     else:
-        st.warning("Nenhuma aula encontrada ou agendada. Verifique se o formato está correto.")
+        st.warning("Nenhuma aula identificada. Verifique se há uma linha com 'Nome', depois 'Horário', depois 'Tipo'.")
 
     if nao_agendados:
         st.error(f"🚨 Conflitos Encontrados: {len(nao_agendados)}")
