@@ -39,7 +39,6 @@ regras_estudios = {
     '7 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '8 PKS': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []},
     '9 PKS': {'abertura': '07:30', 'fechamento': '22:30', 'intervalos': [('12:00', '13:30'), ('17:00', '18:30')], 'proibido': []},
-    '12 SE//DE': {'abertura': '07:00', 'fechamento': '23:00', 'intervalos': [], 'proibido': []}
 }
 
 # ==========================================
